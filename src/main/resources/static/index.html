@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Správce – testovací FE</title>
+    <link
+            rel="stylesheet"
+            href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+            integrity="sha256-p4NXZBfNQZ0WwIgtl7mKpVtGfZ8q3j6u1R5QqY+4o8E="
+            crossorigin=""
+    />
+    <style>
+        body { font-family: system-ui, Arial, sans-serif; margin: 0; }
+        header { padding: 12px 16px; border-bottom: 1px solid #eee; }
+        .wrap { display: grid; grid-template-columns: 360px 1fr; gap: 16px; padding: 16px; }
+        .card { border: 1px solid #eee; border-radius: 8px; padding: 12px; }
+        .list { max-height: calc(100vh - 140px); overflow: auto; }
+        .item { padding: 8px; border-bottom: 1px solid #f2f2f2; cursor: pointer; }
+        .item:hover { background: #fafafa; }
+        .btns button { margin-right: 8px; }
+        #map { height: 380px; border-radius: 8px; }
+        code { background: #f7f7f7; padding: 2px 6px; border-radius: 4px; }
+        .muted { color:#666; font-size: 12px; }
+    </style>
+</head>
+<body>
+<header>
+    <h2>Správce – podezřelé události (MVP)</h2>
+    <div class="muted">Volá BE endpointy: <code>/event</code>, <code>/event/{id}</code>, <code>POST /event/{id}</code>, <code>POST /user/ban/{id}</code></div>
+</header>
+
+<div class="wrap">
+    <div class="card">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+            <strong>Události</strong>
+            <button onclick="loadEvents()">↻ Obnovit</button>
+        </div>
+        <div id="list" class="list">Načítám…</div>
+    </div>
+
+    <div class="card">
+        <div id="detail">
+            <em>Vyber událost vlevo.</em>
+        </div>
+        <div id="map" style="margin-top:12px;"></div>
+    </div>
+</div>
+
+<script
+        src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""
+></script>
+<script>
+    const api = {
+        list: () => fetch('/event').then(r => r.json()),
+        get: (id) => fetch(`/event/${id}`).then(r => r.json()),
+        decide: (id, approved) => fetch(`/event/${id}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ uuid: id, approved })
+        }),
+        ban: (userId) => fetch(`/user/ban/${userId}`, { method: 'POST' })
+    };
+
+    let state = { events: [], selected: null, map: null, marker: null };
+
+    async function loadEvents() {
+        try {
+            const data = await api.list();
+            state.events = data;
+            renderList();
+            if (state.selected) {
+                // refresh selected item
+                const updated = data.find(x => x.id === state.selected.id);
+                if (updated) selectEvent(updated.id); else clearDetail();
+            }
+        } catch (e) {
+            document.getElementById('list').innerHTML = '<div style="color:#b00">Chyba při načítání /event</div>';
+            console.error(e);
+        }
+    }
+
+    function renderList() {
+        const list = document.getElementById('list');
+        if (!state.events.length) {
+            list.innerHTML = '<div class="muted">Žádné události v DB.</div>';
+            return;
+        }
+        list.innerHTML = state.events.map(e => `
+      <div class="item" onclick="selectEvent('${e.id}')">
+        <div><strong>${escapeHtml(e.nazev || '(bez názvu)')}</strong></div>
+        <div class="muted">${escapeHtml(e.popis || '')}</div>
+      </div>
+    `).join('');
+    }
+
+    async function selectEvent(id) {
+        try {
+            const ev = await api.get(id);
+            state.selected = ev;
+            renderDetail(ev);
+            ensureMap(ev);
+        } catch (e) {
+            console.error(e);
+            alert('Nepodařilo se načíst detail události.');
+        }
+    }
+
+    function clearDetail() {
+        state.selected = null;
+        document.getElementById('detail').innerHTML = '<em>Vyber událost vlevo.</em>';
+        if (state.marker && state.map) {
+            state.map.removeLayer(state.marker);
+            state.marker = null;
+        }
+    }
+
+    function renderDetail(ev) {
+        const d = document.getElementById('detail');
+        d.innerHTML = `
+      <h3 style="margin:6px 0;">${escapeHtml(ev.nazev || '(bez názvu)')}</h3>
+      <div class="muted">ID: <code>${ev.id}</code></div>
+      <p>${escapeHtml(ev.popis || '')}</p>
+      <div>📍 Lat/Lng: <code>${ev.lat ?? '-'}</code> / <code>${ev.lng ?? '-'}</code></div>
+      <div>👤 Uživatel: <code>${ev.userId || '-'}</code></div>
+      <div class="btns" style="margin-top:8px;">
+        <button onclick="onApprove('${ev.id}')">✅ Povolit</button>
+        <button onclick="onDeny('${ev.id}')" style="background:#fee;">❌ Zamítnout</button>
+        <button onclick="onBan('${ev.userId}')" style="background:#eef;">⛔ Ban uživatele</button>
+      </div>
+    `;
+    }
+
+    async function onApprove(id) {
+        try {
+            await api.decide(id, true);
+            alert('Událost schválena (odesláno na srumec_events).');
+            await loadEvents();
+        } catch (e) {
+            console.error(e);
+            alert('Schválení selhalo.');
+        }
+    }
+
+    async function onDeny(id) {
+        if (!confirm('Opravdu zamítnout a smazat tuto událost?')) return;
+        try {
+            await api.decide(id, false);
+            alert('Událost zamítnuta a smazána.');
+            await loadEvents();
+        } catch (e) {
+            console.error(e);
+            alert('Zamítnutí selhalo.');
+        }
+    }
+
+    async function onBan(userId) {
+        if (!userId) { alert('Chybí userId'); return; }
+        if (!confirm('Opravdu zabanovat tohoto uživatele?')) return;
+        try {
+            await api.ban(userId);
+            alert('Uživatel zabanován (odesláno na srumec_users).');
+        } catch (e) {
+            console.error(e);
+            alert('Ban se nepodařil (endpoint srumec_users nemusí být zatím dostupný).');
+        }
+    }
+
+    function ensureMap(ev) {
+        const lat = Number(ev.lat), lng = Number(ev.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+        if (!state.map) {
+            state.map = L.map('map').setView([lat, lng], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap'
+            }).addTo(state.map);
+        } else {
+            state.map.setView([lat, lng], state.map.getZoom() || 13);
+        }
+
+        if (state.marker) state.map.removeLayer(state.marker);
+        state.marker = L.marker([lat, lng]).addTo(state.map).bindPopup(ev.nazev || 'Událost');
+    }
+
+    function escapeHtml(s) {
+        return (s ?? '').toString().replace(/[&<>"']/g, c =>
+            ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+    }
+
+    // start
+    loadEvents();
+</script>
+</body>
+</html>
