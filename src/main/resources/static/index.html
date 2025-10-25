@@ -18,7 +18,8 @@
         .item.danger { border-left:4px solid var(--danger); background:#fff6f6; }
         .badge { display:inline-block; font-size:11px; padding:2px 6px; border-radius:6px; background:#fee; color:var(--danger); margin-left:6px; }
         .btns button { margin-right:8px; }
-        #map { height:380px; border-radius:8px; }
+        /* MAP FIXES */
+        #map { height: 420px; min-height: 300px; width: 100%; border-radius: 8px; }
         code { background:#f7f7f7; padding:2px 6px; border-radius:4px; }
         .muted { color:var(--muted); font-size:12px; }
         .cols { display:grid; grid-template-columns: 1fr; gap:12px; }
@@ -71,6 +72,16 @@
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
         crossorigin=""></script>
 <script>
+    // Fallback pro ikonky markeru (pro jistotu v některých prohlížečích / CSP)
+    (function fixLeafletIcons(){
+        const Icon = L.Icon.Default;
+        Icon.mergeOptions({
+            iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+            iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+            shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png'
+        });
+    })();
+
     const api = {
         listEvents: () => fetch('/event').then(r => r.json()),
         getEvent: (id) => fetch(`/event/${id}`).then(r => r.json()),
@@ -248,26 +259,36 @@
         const lat = Number(ev.lat), lng = Number(ev.lng);
         if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
+        // založ mapu jen jednou
         if (!state.map) {
-            state.map = L.map('map').setView([lat, lng], 13);
+            state.map = L.map('map', { zoomControl: true }).setView([lat, lng], 13);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '&copy; OpenStreetMap'
             }).addTo(state.map);
         } else {
-            state.map.setView([lat, lng], state.map.getZoom() || 13);
+            state.map.setView([lat, lng], state.map.getZoom() || 13, { animate: true });
         }
 
+        // marker – vždy znovu
         if (state.marker) state.map.removeLayer(state.marker);
         state.marker = L.marker([lat, lng]).addTo(state.map).bindPopup(ev.nazev || 'Událost');
+
+        // nech DOM přepočítat layout, pak invaliduj velikost mapy
+        requestAnimationFrame(() => state.map.invalidateSize(true));
+        setTimeout(() => state.map.invalidateSize(true), 150);
     }
 
     function escapeHtml(s) {
         return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
     }
 
+    // invaliduj mapu i při změně velikosti okna
+    window.addEventListener('resize', () => {
+        if (state.map) state.map.invalidateSize(true);
+    });
+
     // start
     refreshAll();
-    // auto-refresh každých 10s
     state.timer = setInterval(refreshAll, 10000);
 </script>
 </body>
