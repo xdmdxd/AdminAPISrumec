@@ -1,0 +1,3 @@
+vkladani do db:
+winpty docker exec -it postgres psql -U admin -d admin -c \
+"INSERT INTO banned_word (word) VALUES ('drogy'),('tráva'),('prostitutka'),('fet'),('dealer');"

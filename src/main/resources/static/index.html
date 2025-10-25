@@ -1,79 +1,109 @@
 <!doctype html>
 <html lang="cs">
 <head>
-    <meta charset="UTF-8" />
+    <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Správce – testovací FE</title>
-    <link
-            rel="stylesheet"
-            href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-            integrity="sha256-p4NXZBfNQZ0WwIgtl7mKpVtGfZ8q3j6u1R5QqY+4o8E="
-            crossorigin=""
-    />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NXZBfNQZ0WwIgtl7mKpVtGfZ8q3j6u1R5QqY+4o8E=" crossorigin=""/>
     <style>
+        :root { --danger:#c1121f; --muted:#666; --border:#eee; }
         body { font-family: system-ui, Arial, sans-serif; margin: 0; }
-        header { padding: 12px 16px; border-bottom: 1px solid #eee; }
-        .wrap { display: grid; grid-template-columns: 360px 1fr; gap: 16px; padding: 16px; }
-        .card { border: 1px solid #eee; border-radius: 8px; padding: 12px; }
-        .list { max-height: calc(100vh - 140px); overflow: auto; }
-        .item { padding: 8px; border-bottom: 1px solid #f2f2f2; cursor: pointer; }
-        .item:hover { background: #fafafa; }
-        .btns button { margin-right: 8px; }
-        #map { height: 380px; border-radius: 8px; }
-        code { background: #f7f7f7; padding: 2px 6px; border-radius: 4px; }
-        .muted { color:#666; font-size: 12px; }
+        header { padding:12px 16px; border-bottom:1px solid var(--border); display:flex; gap:12px; align-items:center; justify-content:space-between; }
+        .wrap { display:grid; grid-template-columns: 360px 1fr; gap:16px; padding:16px; }
+        .card { border:1px solid var(--border); border-radius:8px; padding:12px; }
+        .list { max-height: calc(100vh - 140px); overflow:auto; }
+        .item { padding:8px; border-bottom:1px solid #f2f2f2; cursor:pointer; }
+        .item:hover { background:#fafafa; }
+        .item.danger { border-left:4px solid var(--danger); background:#fff6f6; }
+        .badge { display:inline-block; font-size:11px; padding:2px 6px; border-radius:6px; background:#fee; color:var(--danger); margin-left:6px; }
+        .btns button { margin-right:8px; }
+        #map { height:380px; border-radius:8px; }
+        code { background:#f7f7f7; padding:2px 6px; border-radius:4px; }
+        .muted { color:var(--muted); font-size:12px; }
+        .cols { display:grid; grid-template-columns: 1fr; gap:12px; }
+        @media (min-width: 1100px){ .cols { grid-template-columns: 1fr 1fr; } }
+        .row { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+        button { cursor:pointer; }
     </style>
 </head>
 <body>
 <header>
-    <h2>Správce – podezřelé události (MVP)</h2>
-    <div class="muted">Volá BE endpointy: <code>/event</code>, <code>/event/{id}</code>, <code>POST /event/{id}</code>, <code>POST /user/ban/{id}</code></div>
+    <div>
+        <h2 style="margin:0;">Správce – události & alerty (MVP)</h2>
+        <div class="muted">Volá BE: <code>/event</code>, <code>/event/{id}</code>, <code>POST /event/{id}</code>, <code>/api/alerts</code>, <code>POST /user/ban/{id}</code></div>
+    </div>
+    <div class="row">
+        <span class="muted">Auto-refresh: <code>10s</code></span>
+        <button onclick="refreshAll()">↻ Obnovit</button>
+    </div>
 </header>
 
 <div class="wrap">
+    <!-- LEVÝ PANEL: EVENTY -->
     <div class="card">
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+        <div class="row" style="margin-bottom:8px;">
             <strong>Události</strong>
-            <button onclick="loadEvents()">↻ Obnovit</button>
+            <div class="muted" id="eventsCount"></div>
         </div>
         <div id="list" class="list">Načítám…</div>
     </div>
 
+    <!-- PRAVÝ PANEL: ALERTY + DETAIL + MAPA -->
     <div class="card">
-        <div id="detail">
-            <em>Vyber událost vlevo.</em>
+        <div class="cols">
+            <div>
+                <div class="row" style="margin-bottom:6px;">
+                    <strong>Alerty (podezřelé)</strong>
+                    <div class="muted" id="alertsCount"></div>
+                </div>
+                <div id="alertsList" class="list" style="max-height:220px;">Načítám…</div>
+            </div>
+            <div id="detailBox">
+                <div id="detail"><em>Vyber událost vlevo nebo klikni na alert.</em></div>
+                <div id="map" style="margin-top:12px;"></div>
+            </div>
         </div>
-        <div id="map" style="margin-top:12px;"></div>
     </div>
 </div>
 
-<script
-        src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-        crossorigin=""
-></script>
+        crossorigin=""></script>
 <script>
     const api = {
-        list: () => fetch('/event').then(r => r.json()),
-        get: (id) => fetch(`/event/${id}`).then(r => r.json()),
+        listEvents: () => fetch('/event').then(r => r.json()),
+        getEvent: (id) => fetch(`/event/${id}`).then(r => r.json()),
         decide: (id, approved) => fetch(`/event/${id}`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ uuid: id, approved })
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ uuid:id, approved })
         }),
-        ban: (userId) => fetch(`/user/ban/${userId}`, { method: 'POST' })
+        listAlerts: () => fetch('/api/alerts').then(r => r.json()),
+        ban: (userId) => fetch(`/user/ban/${userId}`, { method:'POST' }),
     };
 
-    let state = { events: [], selected: null, map: null, marker: null };
+    let state = {
+        events: [],
+        alerts: [],
+        alertsByEventId: new Map(), // eventId -> alert
+        selected: null,
+        map: null,
+        marker: null,
+        timer: null
+    };
+
+    async function refreshAll(){
+        await Promise.all([loadAlerts(), loadEvents()]);
+    }
 
     async function loadEvents() {
         try {
-            const data = await api.list();
-            state.events = data;
-            renderList();
+            const data = await api.listEvents();
+            state.events = Array.isArray(data) ? data : [];
+            document.getElementById('eventsCount').textContent = `${state.events.length} položek`;
+            renderEventList();
             if (state.selected) {
-                // refresh selected item
-                const updated = data.find(x => x.id === state.selected.id);
+                const updated = state.events.find(x => x.id === state.selected.id);
                 if (updated) selectEvent(updated.id); else clearDetail();
             }
         } catch (e) {
@@ -82,23 +112,68 @@
         }
     }
 
-    function renderList() {
+    async function loadAlerts() {
+        try {
+            const data = await api.listAlerts();
+            state.alerts = Array.isArray(data) ? data : [];
+            document.getElementById('alertsCount').textContent = `${state.alerts.length} položek`;
+            // přemapuj podle eventId (pokud existuje)
+            state.alertsByEventId = new Map();
+            for (const a of state.alerts) {
+                if (a.eventId) state.alertsByEventId.set(a.eventId, a);
+            }
+            renderAlertsList();
+            // re-render event list kvůli zvýraznění
+            renderEventList();
+        } catch (e) {
+            document.getElementById('alertsList').innerHTML = '<div style="color:#b00">Chyba při načítání /api/alerts</div>';
+            console.error(e);
+        }
+    }
+
+    function renderEventList() {
         const list = document.getElementById('list');
         if (!state.events.length) {
             list.innerHTML = '<div class="muted">Žádné události v DB.</div>';
             return;
         }
-        list.innerHTML = state.events.map(e => `
-      <div class="item" onclick="selectEvent('${e.id}')">
-        <div><strong>${escapeHtml(e.nazev || '(bez názvu)')}</strong></div>
-        <div class="muted">${escapeHtml(e.popis || '')}</div>
+        list.innerHTML = state.events.map(e => {
+            const suspicious = state.alertsByEventId.has(e.id);
+            const badge = suspicious ? `<span class="badge">ALERT</span>` : '';
+            return `
+        <div class="item ${suspicious ? 'danger' : ''}" onclick="selectEvent('${e.id}')">
+          <div><strong>${escapeHtml(e.nazev || '(bez názvu)')}</strong>${badge}</div>
+          <div class="muted">${escapeHtml(e.popis || '')}</div>
+        </div>`;
+        }).join('');
+    }
+
+    function renderAlertsList() {
+        const box = document.getElementById('alertsList');
+        if (!state.alerts.length) {
+            box.innerHTML = '<div class="muted">Žádné alerty.</div>';
+            return;
+        }
+        box.innerHTML = state.alerts.map(a => `
+      <div class="item" onclick="openAlert('${a.id}')">
+        <div><strong>${escapeHtml(a.title || a.message || 'Alert')}</strong></div>
+        ${a.eventId ? `<div class="muted">event: <code>${a.eventId}</code></div>` : ''}
       </div>
     `).join('');
     }
 
+    async function openAlert(alertId) {
+        const a = state.alerts.find(x => x.id === alertId);
+        if (a && a.eventId) {
+            await selectEvent(a.eventId);
+        } else {
+            alert('Alert nemá přiřazený eventId.');
+        }
+    }
+
     async function selectEvent(id) {
         try {
-            const ev = await api.get(id);
+            const ev = await api.getEvent(id);
             state.selected = ev;
             renderDetail(ev);
             ensureMap(ev);
@@ -110,7 +185,7 @@
 
     function clearDetail() {
         state.selected = null;
-        document.getElementById('detail').innerHTML = '<em>Vyber událost vlevo.</em>';
+        document.getElementById('detail').innerHTML = '<em>Vyber událost vlevo nebo klikni na alert.</em>';
         if (state.marker && state.map) {
             state.map.removeLayer(state.marker);
             state.marker = null;
@@ -118,9 +193,10 @@
     }
 
     function renderDetail(ev) {
+        const suspicious = state.alertsByEventId.has(ev.id);
         const d = document.getElementById('detail');
         d.innerHTML = `
-      <h3 style="margin:6px 0;">${escapeHtml(ev.nazev || '(bez názvu)')}</h3>
+      <h3 style="margin:6px 0;">${escapeHtml(ev.nazev || '(bez názvu)')}${suspicious ? ' <span class="badge">ALERT</span>' : ''}</h3>
       <div class="muted">ID: <code>${ev.id}</code></div>
       <p>${escapeHtml(ev.popis || '')}</p>
       <div>📍 Lat/Lng: <code>${ev.lat ?? '-'}</code> / <code>${ev.lng ?? '-'}</code></div>
@@ -136,8 +212,8 @@
     async function onApprove(id) {
         try {
             await api.decide(id, true);
+            await refreshAll();
             alert('Událost schválena (odesláno na srumec_events).');
-            await loadEvents();
         } catch (e) {
             console.error(e);
             alert('Schválení selhalo.');
@@ -148,8 +224,8 @@
         if (!confirm('Opravdu zamítnout a smazat tuto událost?')) return;
         try {
             await api.decide(id, false);
+            await refreshAll();
             alert('Událost zamítnuta a smazána.');
-            await loadEvents();
         } catch (e) {
             console.error(e);
             alert('Zamítnutí selhalo.');
@@ -186,12 +262,13 @@
     }
 
     function escapeHtml(s) {
-        return (s ?? '').toString().replace(/[&<>"']/g, c =>
-            ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+        return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
     }
 
     // start
-    loadEvents();
+    refreshAll();
+    // auto-refresh každých 10s
+    state.timer = setInterval(refreshAll, 10000);
 </script>
 </body>
 </html>
