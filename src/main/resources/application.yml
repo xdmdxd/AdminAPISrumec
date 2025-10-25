@@ -12,3 +12,6 @@ spring:
 
 server:
   port: 8080
+
+srumec:
+  banned-words: drogy,trava,prostitutka,fet,dealer,weed,drugs,pervitin,kokain,heroin
