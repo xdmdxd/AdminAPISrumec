@@ -42,10 +42,19 @@ public class ModerationService {
             }
             // událost v DB ponecháme (případně si později přidejte sloupec 'approved_at' nebo 'state')
         } else {
-            // ❌ zamítnuto → smaž z DB
+            // ❌ zamítnuto → pošli také informaci o zamítnutí
+            try {
+                eventsClient.post()
+                        .uri("/events/rejected")
+                        .body(ev)
+                        .retrieve()
+                        .toBodilessEntity();
+            }catch (Exception ignored) {
+                // necháme „fire-and-forget“ – případně zaloguj
+            }
 
+            // a teprve potom smaž z DB
             repo.deleteById(id);
-
         }
     }
 

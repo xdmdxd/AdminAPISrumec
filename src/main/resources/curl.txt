@@ -1,12 +1,5 @@
-vkladani do db:
-winpty docker exec -it postgres psql -U admin -d admin -c \
-"INSERT INTO banned_word (word) VALUES ('drogy'),('tráva'),('prostitutka'),('fet'),('dealer');"
 
-
-
-
-
-Vkladani aleru pres CURL:
+Vkladani eventu pres CURL:
 
 curl -X POST http://localhost:8080/event \
   -H "Content-Type: application/json" \
