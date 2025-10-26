@@ -10,6 +10,7 @@ import com.srumec.adminapi.web.dto.DecisionDTO;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.text.Normalizer;
 import java.util.*;
@@ -68,7 +69,11 @@ public class EventController {
     public List<Event> all() { return repo.findAll(); }
 
     @GetMapping("/{id}")
-    public Event one(@PathVariable UUID id) { return repo.findById(id).orElseThrow(); }
+    public Event one(@PathVariable UUID id) {
+        return repo.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Event not found: " + id));
+    }
 
     // ---------- DECIDE ----------
     @PostMapping("/{id}")

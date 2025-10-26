@@ -3,8 +3,10 @@ package com.srumec.adminapi.service;
 import com.srumec.adminapi.domain.Event;
 import com.srumec.adminapi.repo.EventRepository;
 import com.srumec.adminapi.web.dto.DecisionDTO;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.UUID;
 
@@ -22,7 +24,11 @@ public class ModerationService {
     }
 
     public void decide(UUID id, DecisionDTO req) {
-        var ev = repo.findById(id).orElseThrow();
+        // ModerationService (když načítáš event před rozhodnutím)
+        var ev = repo.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Event not found: " + id));
+
 
         // volitelná kontrola, když FE pošle i uuid v těle
         if (req.uuid() != null && !id.equals(req.uuid())) {
@@ -33,14 +39,15 @@ public class ModerationService {
             // ✅ schváleno → pošli event do srumec_events (endpoint si sjednotíte; teď placeholder)
             try {
                 eventsClient.post()
-                        .uri("/events/approved")   // upravte na reálný endpoint
+                        .uri("/events/approved")   //TODO upravte na reálný endpoint
                         .body(ev)
                         .retrieve()
                         .toBodilessEntity();
             } catch (Exception ignored) {
                 // necháme „fire-and-forget“ – případně zaloguj
             }
-            // událost v DB ponecháme (případně si později přidejte sloupec 'approved_at' nebo 'state')
+            //TODO
+            // přidat sloupec sloupec 'approved_at' nebo 'state')
         } else {
             // ❌ zamítnuto → pošli také informaci o zamítnutí
             try {

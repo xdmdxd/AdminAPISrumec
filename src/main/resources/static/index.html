@@ -290,6 +290,28 @@
     // start
     refreshAll();
     state.timer = setInterval(refreshAll, 10000);
+
+    async function selectEvent(id) {
+        try {
+            const res = await fetch(`/event/${id}`, { cache: 'no-store' });
+            if (!res.ok) {
+                if (res.status === 404) {
+                    alert('Tato událost už neexistuje. Obnovuji seznam.');
+                    await refreshAll();
+                    return;
+                }
+                throw new Error(`GET /event/${id} failed: ${res.status}`);
+            }
+            const ev = await res.json();
+            state.selected = ev;
+            renderDetail(ev);
+            ensureMap(ev);
+        } catch (e) {
+            console.error(e);
+            alert('Nepodařilo se načíst detail události.');
+        }
+    }
+
 </script>
 </body>
 </html>
