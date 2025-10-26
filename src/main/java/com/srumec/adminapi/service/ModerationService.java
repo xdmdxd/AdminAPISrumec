@@ -43,7 +43,10 @@ public class ModerationService {
             // událost v DB ponecháme (případně si později přidejte sloupec 'approved_at' nebo 'state')
         } else {
             // ❌ zamítnuto → smaž z DB
+
             repo.deleteById(id);
+
         }
     }
+
 }

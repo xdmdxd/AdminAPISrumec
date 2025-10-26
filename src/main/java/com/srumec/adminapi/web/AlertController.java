@@ -40,4 +40,5 @@ public class AlertController {
         a.setStatus(status);
         return repo.save(a);
     }
+
 }

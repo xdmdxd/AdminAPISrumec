@@ -44,3 +44,8 @@ curl -X POST http://localhost:8080/event \
 curl -X POST http://localhost:8080/event \
   -H "Content-Type: application/json" \
   -d '{"nazev":"Cocaine party","popis":"exclusive pervitin and kokain night","lat":50.110,"lng":14.490,"userId":"00000000-0000-0000-0000-000000000009"}'
+
+
+smazat db:
+
+docker exec -it postgres psql -U admin -d admin -c "TRUNCATE TABLE event, alert RESTART IDENTITY CASCADE;"
